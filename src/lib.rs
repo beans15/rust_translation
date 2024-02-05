@@ -1,22 +1,28 @@
 #[cfg(feature = "limit")]
-use std::sync::atomic::AtomicI8;
+use std::sync::atomic::AtomicI32;
 
 use anyhow::Result;
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "limit")]
-static COUNTER: AtomicI8 = AtomicI8::new(0);
+static COUNTER: AtomicI32 = AtomicI32::new(0);
 
 #[cfg(feature = "limit")]
-static MAX_COUNT: i8 = 3;
+static MAX_COUNT: Lazy<i32> = Lazy::new(|| {
+    std::env::var("GAS_TRANSLATION_LIMIT")
+        .ok()
+        .map(|s| {
+            s.parse().expect(&format!(
+                "The value 'GAS_TRANSLATION_LIMIT={}' is invalid.",
+                s
+            ))
+        })
+        .unwrap_or(3)
+});
 
-#[derive(Serialize, Deserialize, Debug)]
-struct Config {
-    translation_url: String,
-}
-
-static CONFIG: Lazy<Config> = Lazy::new(|| envy::prefixed("GAS_").from_env().unwrap());
+static TRANSLATION_URL: Lazy<String> =
+    Lazy::new(|| std::env::var("GAS_TRANSLATION_URL").expect("'GAS_TRANSLATION_URL' is not set."));
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ApiResponse {
@@ -36,7 +42,7 @@ pub async fn translate(text: &str, source: &str, target: &str) -> Result<String>
     use std::{hint::spin_loop, sync::atomic::Ordering, time::Duration};
 
     while let Err(_) = COUNTER.fetch_update(Ordering::Relaxed, Ordering::Acquire, |current| {
-        if current < MAX_COUNT {
+        if current < *MAX_COUNT {
             Some(current + 1)
         } else {
             None
@@ -62,7 +68,7 @@ async fn translate_impl(text: &str, source: &str, target: &str) -> Result<String
         source,
         target,
     };
-    let url = &CONFIG.translation_url;
+    let url = &TRANSLATION_URL[..];
     let client = reqwest::Client::new();
     let response = client.post(url).json(&data).send().await?;
     let result = response.json::<ApiResponse>().await?;
