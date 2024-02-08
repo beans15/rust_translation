@@ -18,7 +18,7 @@ static MAX_COUNT: Lazy<i32> = Lazy::new(|| {
                 s
             ))
         })
-        .unwrap_or(3)
+        .unwrap_or(5)
 });
 
 static TRANSLATION_URL: Lazy<String> =
@@ -41,7 +41,7 @@ struct RequestParams<'a> {
 pub async fn translate(text: &str, source: &str, target: &str) -> Result<String> {
     use std::{hint::spin_loop, sync::atomic::Ordering, time::Duration};
 
-    while let Err(_) = COUNTER.fetch_update(Ordering::Relaxed, Ordering::Acquire, |current| {
+    while let Err(_) = COUNTER.fetch_update(Ordering::Release, Ordering::Relaxed, |current| {
         if current < *MAX_COUNT {
             Some(current + 1)
         } else {
@@ -53,7 +53,7 @@ pub async fn translate(text: &str, source: &str, target: &str) -> Result<String>
     }
 
     let result = translate_impl(text, source, target).await;
-    COUNTER.fetch_sub(1, Ordering::Release);
+    COUNTER.fetch_sub(1, Ordering::Acquire);
     result
 }
 
